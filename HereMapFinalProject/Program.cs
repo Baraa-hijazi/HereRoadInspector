@@ -13,7 +13,6 @@ namespace HereMapFinalProject
     {
         public static async Task Main()
         {
-            const string apiKey = "### YOUR_APIKEY_HERE ###";
             Console.OutputEncoding = Encoding.UTF8;
 
             Console.WriteLine("enter 1 to check if location is in street.");
@@ -72,7 +71,7 @@ namespace HereMapFinalProject
                                             Latitude = Convert.ToDouble(fields[0].Split('-')[0]),
                                             Longitude = Convert.ToDouble(fields[0].Split('-')[1])
                                         };
-                                        isOffRoad = await OffRoad.IsOffRoad(currentLocation, apiKey);
+                                        isOffRoad = await OffRoad.IsOffRoad(currentLocation);
 
                                         newLine = $"{currentLocation.Latitude}-{currentLocation.Longitude},{isOffRoad}";
                                     }
@@ -87,12 +86,13 @@ namespace HereMapFinalProject
                             ? $"Road on Credentials: ({currentLocation.Latitude}, {currentLocation.Longitude}) is unpaved"
                             : $"Road on Credentials: ({currentLocation.Latitude}, {currentLocation.Longitude}) is Paved");
 
-                        Thread.Sleep(1000);
+                        Thread.Sleep(1500);
                     }
                     catch (Exception ex)
                     {
+                        Console.WriteLine("ERROR.");
                         Console.WriteLine(ex.Message);
-                        Thread.Sleep(1000);
+                        Thread.Sleep(1500);
                     }
 
                     break;
@@ -101,7 +101,6 @@ namespace HereMapFinalProject
                     var result = "It's not valid";
                     try
                     {
-                        //Console.WriteLine("Please enter file path ex (\"C:\\Users\\User\\Desktop\\valid_direction_input.csv\").");
                         var executableLocation = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                         var inputFile = Path.Combine(executableLocation ?? string.Empty, "valid_direction_input.csv");
                         var stringDate = DateTime.Now.ToString("MMddHHmmssff");
@@ -148,9 +147,9 @@ namespace HereMapFinalProject
                                             Latitude = Convert.ToDouble(fields[1].Split('-')[0]),
                                             Longitude = Convert.ToDouble(fields[1].Split('-')[1])
                                         };
-                                        result = await Routing.IsValidWay(previousLocation, currentLocation, apiKey);
+                                        result = await RouteMatching.ForbiddenRoadDirection(previousLocation, currentLocation) ? "Forbidden Road Direction" : "Valid Road Direction";
 
-                                        newLine = $"{previousLocation.Latitude}-{previousLocation.Longitude},{currentLocation.Latitude}-{currentLocation.Longitude},{result}";
+                                        newLine = $"{previousLocation.Latitude}-{previousLocation.Longitude},{currentLocation.Latitude}-{currentLocation.Longitude},  {result}";
                                     }
                                 }
 
@@ -158,16 +157,17 @@ namespace HereMapFinalProject
                             }
                         }
 
+                        Console.WriteLine(result);
                         Console.WriteLine("Done");
-                        Thread.Sleep(1000);
+                        Console.ReadLine();
                     }
                     catch (Exception ex)
                     {
+                        Console.WriteLine("ERROR.");
                         Console.WriteLine(ex.Message);
-                        Thread.Sleep(1000);
+                        Thread.Sleep(1500);
                     }
 
-                    Console.WriteLine(result);
                     break;
                 case "3":
                     try
@@ -204,8 +204,7 @@ namespace HereMapFinalProject
                                             Latitude = Convert.ToDouble(fields[0].Split('-')[0]),
                                             Longitude = Convert.ToDouble(fields[0].Split('-')[1])
                                         };
-                                        var getSpeedLimitResult =
-                                            await RouteMatching.GetSpeedLimit(currentLocation, apiKey);
+                                        var getSpeedLimitResult = await RouteMatching.GetSpeedLimit(currentLocation);
 
                                         newLine = $"{currentLocation.Latitude}-{currentLocation.Longitude},{getSpeedLimitResult}";
                                     }
@@ -216,18 +215,19 @@ namespace HereMapFinalProject
                         }
 
                         Console.WriteLine("Done");
-                        Thread.Sleep(1000);
+                        Console.ReadLine();
                     }
                     catch (Exception ex)
                     {
+                        Console.WriteLine("ERROR.");
                         Console.WriteLine(ex.Message);
-                        Thread.Sleep(1000);
+                        Thread.Sleep(1500);
                     }
 
                     break;
                 default:
                     Console.WriteLine("YOU HAVE ENTERED INVALID INPUT PLEASE TRY AGAIN.");
-                    Thread.Sleep(1000);
+                    Thread.Sleep(1500);
                     break;
             }
         }
@@ -236,13 +236,14 @@ namespace HereMapFinalProject
     public static class RouteMatching
     {
         private static readonly HttpClient HttpClient = new HttpClient();
+        private const string ApiKey = "### YOUR_APIKEY_HERE ###";
         private const string RouteMatchingEndpoint = "https://routematching.hereapi.com/v8/match/routelinks";
 
-        public static async Task<string> GetSpeedLimit(Location location, string apiKey)
+        public static async Task<string> GetSpeedLimit(Location location)
         {
             try
             {
-                var queryString = $"apikey={apiKey}&routeMatch=1&mode=fastest;car;traffic:disabled;&attributes=SPEED_LIMITS_FCn(*)";
+                var queryString = $"apikey={ApiKey}&routeMatch=1&mode=fastest;car;traffic:disabled;&attributes=SPEED_LIMITS_FCn(*)";
                 var myContent = $"LATITUDE,LONGITUDE\r\n{location.Latitude},{location.Longitude}";
                 var buffer = Encoding.UTF8.GetBytes(myContent);
                 var byteContent = new ByteArrayContent(buffer);
@@ -268,78 +269,55 @@ namespace HereMapFinalProject
                 return "Failed: Somthing went wrong";
             }
         }
-    }
 
-    public static class Routing
-    {
-        private static readonly HttpClient HttpClient = new HttpClient();
-        private const string RoutingEndpoint = "https://routematching.hereapi.com/v8/match/routelinks";
-
-        public static async Task<string> IsValidWay(Location originLocation, Location destinationLocation, string apiKey)
+        public static async Task<bool> ForbiddenRoadDirection(Location origin, Location destination)
         {
             try
             {
-                var queryString = $"apiKey={apiKey}" +
-                                  $"&waypoint1={destinationLocation.Latitude},{destinationLocation.Longitude}" +
-                                  $"&waypoint0={originLocation.Latitude},{originLocation.Longitude}&mode=car";
+                var request = new HttpRequestMessage(HttpMethod.Post, $"https://routematching.hereapi.com/v8/match/routelinks?routeMatch=1&mode=fastest;car;traffic:disabled&apiKey={ApiKey}&drivingReport=1");
 
-                var response = await HttpClient.GetAsync($"{RoutingEndpoint}?{queryString}");
+                var requestBody = "LATITUDE,LONGITUDE" +
+                          $"\r\n{destination.Latitude},{destination.Longitude}" +
+                          $"\r\n{origin.Latitude},{origin.Longitude}";
 
-                var queryString2 = $"apiKey={apiKey}" +
-                                   $"&waypoint1={destinationLocation.Latitude},{destinationLocation.Longitude}" +
-                                   $"&waypoint0={originLocation.Latitude},{originLocation.Longitude}&mode=car&oneway=penalty:0.000001";
+                request.Content = new StringContent(requestBody);
 
-                var response2 = await HttpClient.GetAsync($"{RoutingEndpoint}?{queryString2}");
-
-                int distanceWithoutDirection;
-
-                if (response2.IsSuccessStatusCode)
-                {
-                    var json = await response2.Content.ReadAsStringAsync();
-                    var parsedResponse2 = JObject.Parse(json);
-                    var responseObject2 = (JObject)parsedResponse2["response"];
-                    var routes2 = (JArray)responseObject2?["route"];
-                    var route2 = (JObject)routes2?[0];
-                    var summary2 = (JObject)route2?["summary"];
-                    distanceWithoutDirection = (summary2?["distance"] ?? 0).Value<int>();
-                }
-                else
-                {
-                    return "Failed: Request Failed";
-                }
-
+                var response = await HttpClient.SendAsync(request);
                 if (response.IsSuccessStatusCode)
                 {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var parsedResponse = JObject.Parse(json);
-                    var responseObject = (JObject)parsedResponse["response"];
-                    var routes = (JArray)responseObject?["route"];
-                    var route = (JObject)routes?[0];
-                    var summary = (JObject)route?["summary"];
-                    var distance = summary?["distance"]?.Value<int>();
+                    var result = await response.Content.ReadAsStringAsync();
+                    var jsonObject = JObject.Parse(result);
 
-                    return distance <= distanceWithoutDirection ? "Valid" : "Not Valid";
+                    var message = (string)jsonObject["response"]?["warnings"]?[0]?["message"];
+                    var illegalRoadDirection = message != null && message.EndsWith("forbidden driving direction");
+
+                    if (illegalRoadDirection)
+                    {
+                        return true;
+                    }
                 }
 
-                return "Failed: Request Failed";
+                return false;
             }
             catch
             {
-                return "Failed: Somthing went wrong";
+                return false;
             }
         }
     }
 
     public static class OffRoad
     {
-        public static async Task<bool> IsOffRoad(Location location, string apiKey)
+        private const string ApiKey = "### YOUR_APIKEY_HERE ###";
+
+        public static async Task<bool> IsOffRoad(Location location)
         {
-            var roadRefSeg = GetRoadRefSegment(location.Latitude, location.Longitude, apiKey);
+            var roadRefSeg = GetRoadRefSegment(location.Latitude, location.Longitude, ApiKey);
 
             using (var client = new HttpClient())
             {
                 client.Timeout = TimeSpan.FromSeconds(5);
-                var url = $"https://smap.hereapi.com/v8/maps/attributes/segments?apikey={apiKey}";
+                var url = $"https://smap.hereapi.com/v8/maps/attributes/segments?apikey={ApiKey}";
 
                 var body = new MultipartFormDataContent();
                 body.Add(new StringContent("LINK_ATTRIBUTE_FCn(*)"), "attributes");
